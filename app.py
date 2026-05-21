@@ -59,9 +59,14 @@ Reponds en francais. Sois precis, factuel, quantifie."""
 @app.route("/analyze", methods=["POST"])
 def analyze():
     data = request.json
-    urls = data.get("urls", [])
+    urls_raw = data.get("urls", "")
     adversaire = data.get("adversaire", "Inconnu")
-
+    
+    if isinstance(urls_raw, list):
+        urls = urls_raw
+    else:
+        urls = [u.strip() for u in urls_raw.split(",") if u.strip()]
+    
     if not urls:
         return jsonify({"error": "Aucune URL fournie"}), 400
 
@@ -86,28 +91,30 @@ def analyze():
 
                 video_path = os.path.join(tmpdir, video_files[0])
 
-                video_file = genai.upload_file(
+                video_file = client.files.upload(
                     path=video_path,
                     display_name=adversaire
                 )
 
                 while video_file.state.name == "PROCESSING":
                     time.sleep(5)
-                    video_file = genai.get_file(video_file.name)
+                    video_file = client.files.get(name=video_file.name)
 
                 if video_file.state.name == "FAILED":
                     analyses.append({"url": url, "error": "Traitement Gemini echoue"})
                     continue
 
-                model = genai.GenerativeModel("gemini-2.0-flash")
-                response = model.generate_content([video_file, PROMPT_ANALYSE])
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=[video_file, PROMPT_ANALYSE]
+                )
 
                 analyses.append({
                     "url": url,
                     "analyse": response.text
                 })
 
-                genai.delete_file(video_file.name)
+                client.files.delete(name=video_file.name)
 
         except Exception as e:
             analyses.append({"url": url, "error": str(e)})
