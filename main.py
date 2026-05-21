@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 import yt_dlp
-import google.generativeai as genai
+from google import genai
 import os
 import tempfile
 import time
