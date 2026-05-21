@@ -3,7 +3,7 @@ import yt_dlp
 from google import genai
 import os
 import tempfile
-import time
+import base64
 
 app = Flask(__name__)
 
@@ -16,7 +16,6 @@ Analyse cette video et produis une analyse tactique complete selon cette structu
 0. ANALYSE DE LA SOURCE ET FIABILITE DU MATERIEL
 - Type de contenu identifie
 - Qui a diffuse ce contenu
-- Signes de mise en scene ou selection deliberee
 - Coefficient de fiabilite applique (%)
 - Risque d intox : oui / possible / non
 
@@ -61,12 +60,12 @@ def analyze():
     data = request.json
     urls_raw = data.get("urls", "")
     adversaire = data.get("adversaire", "Inconnu")
-    
+
     if isinstance(urls_raw, list):
         urls = urls_raw
     else:
         urls = [u.strip() for u in urls_raw.split(",") if u.strip()]
-    
+
     if not urls:
         return jsonify({"error": "Aucune URL fournie"}), 400
 
@@ -76,7 +75,7 @@ def analyze():
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
                 ydl_opts = {
-                    "format": "worst[ext=mp4]/worst/bestvideo[filesize<100M]+bestaudio/best[filesize<100M]",
+                    "format": "worst[ext=mp4]/worst/best[filesize<50M]",
                     "merge_output_format": "mp4",
                     "outtmpl": tmpdir + "/video.%(ext)s",
                     "quiet": True,
@@ -92,30 +91,32 @@ def analyze():
 
                 video_path = os.path.join(tmpdir, video_files[0])
 
-                video_file = client.files.upload(
-                    path=video_path,
-                    display_name=adversaire
-                )
+                with open(video_path, "rb") as f:
+                    video_data = f.read()
 
-                while video_file.state.name == "PROCESSING":
-                    time.sleep(5)
-                    video_file = client.files.get(name=video_file.name)
-
-                if video_file.state.name == "FAILED":
-                    analyses.append({"url": url, "error": "Traitement Gemini echoue"})
-                    continue
+                video_b64 = base64.b64encode(video_data).decode()
 
                 response = client.models.generate_content(
                     model="gemini-2.0-flash",
-                    contents=[video_file, PROMPT_ANALYSE]
+                    contents=[
+                        {
+                            "parts": [
+                                {
+                                    "inline_data": {
+                                        "mime_type": "video/mp4",
+                                        "data": video_b64
+                                    }
+                                },
+                                {"text": PROMPT_ANALYSE}
+                            ]
+                        }
+                    ]
                 )
 
                 analyses.append({
                     "url": url,
                     "analyse": response.text
                 })
-
-                client.files.delete(name=video_file.name)
 
         except Exception as e:
             analyses.append({"url": url, "error": str(e)})
