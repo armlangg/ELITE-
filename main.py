@@ -8,7 +8,7 @@ import time
 app = Flask(__name__)
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 PROMPT_ANALYSE = """Tu es un analyste tactique expert en boxe anglaise professionnelle.
 Analyse cette video et produis une analyse tactique complete selon cette structure :
