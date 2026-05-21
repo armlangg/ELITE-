@@ -76,7 +76,8 @@ def analyze():
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
                 ydl_opts = {
-                    "format": "best[ext=mp4][filesize<200M]/best[filesize<200M]",
+                    "format": "worst[ext=mp4]/worst/bestvideo[filesize<100M]+bestaudio/best[filesize<100M]",
+                    "merge_output_format": "mp4",
                     "outtmpl": tmpdir + "/video.%(ext)s",
                     "quiet": True,
                 }
