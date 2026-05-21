@@ -3,7 +3,6 @@ import yt_dlp
 from google import genai
 import os
 import tempfile
-import base64
 
 app = Flask(__name__)
 
@@ -15,44 +14,34 @@ Analyse cette video et produis une analyse tactique complete selon cette structu
 
 0. ANALYSE DE LA SOURCE ET FIABILITE DU MATERIEL
 - Type de contenu identifie
-- Qui a diffuse ce contenu
 - Coefficient de fiabilite applique (%)
 - Risque d intox : oui / possible / non
 
 1. PROFIL GENERAL
-- Style de boxe
-- Garde et points de vulnerabilite
-- Distance preferee
+- Style de boxe, garde, distance preferee
 
 2. ANALYSE SPATIALE
-- Zones du ring en phase offensive
-- Zones du ring en phase defensive
-- Zones ou il a recu le plus de coups
-- Deplacements apres encaissement
+- Zones offensives, defensives, coups recus, deplacements
 
 3. STATISTIQUES OFFENSIVES
-Pour chaque coup (jab, direct droit, crochet gauche/droit, uppercut gauche/droit, corps) :
-- Frequence, efficacite, distance, signal avant-coureur
+- Frequence, efficacite, distance, signal avant-coureur par coup
 
 4. COMBINAISONS FAVORITES
-Les 3 a 5 plus recurrentes avec sequence, declencheur, frequence, efficacite
+- Top 5 avec sequence, declencheur, frequence, efficacite
 
 5. ANALYSE DEFENSIVE
-Pour chaque combinaison : defense principale, defense secondaire, contre-attaque, expositions observees, taux de succes, vulnerabilite, niveau de confiance
-C01-1 / C02-2 / C03-3
-C04-1-2 / C05-1-3 / C06-2-3 / C07-1-1 / C08-3-2 / C09-1-B / C10-2-B
-C11-1-2-3 / C12-1-1-2 / C13-1-2-B / C14-1-3-2 / C15-1-2-5 / C16-3-2-3 / C17-1-B-3 / C18-2-3-2 / C19-1-2-6 / C20-5-2-3
+C01 a C20 : defense principale, secondaire, contre, expositions, taux succes, vulnerabilite, confiance
 
 6. FAIBLESSES STRUCTURELLES
-Par ordre de priorite : description, situation, exploitation concrete
+Par priorite : description, situation, exploitation
 
-7. CONDITIONNEMENT ET ENDURANCE
-Evolution par round, premiers signes de fatigue, comportement fin de round, resistance
+7. CONDITIONNEMENT
+Evolution par round, fatigue, fin de round, resistance
 
-8. ELEMENTS PSYCHOLOGIQUES
-Reaction a la pression, apres encaissement, en difficulte, frustration
+8. PSYCHOLOGIE
+Pression, encaissement, difficulte, frustration
 
-Reponds en francais. Sois precis, factuel, quantifie."""
+Reponds en francais. Precis, factuel, quantifie."""
 
 
 @app.route("/analyze", methods=["POST"])
@@ -91,32 +80,28 @@ def analyze():
 
                 video_path = os.path.join(tmpdir, video_files[0])
 
-                with open(video_path, "rb") as f:
-                    video_data = f.read()
+                uploaded_file = client.files.upload(file=video_path)
 
-                video_b64 = base64.b64encode(video_data).decode()
+                while uploaded_file.state.name == "PROCESSING":
+                    import time
+                    time.sleep(5)
+                    uploaded_file = client.files.get(name=uploaded_file.name)
+
+                if uploaded_file.state.name == "FAILED":
+                    analyses.append({"url": url, "error": "Traitement Gemini echoue"})
+                    continue
 
                 response = client.models.generate_content(
                     model="gemini-2.0-flash",
-                    contents=[
-                        {
-                            "parts": [
-                                {
-                                    "inline_data": {
-                                        "mime_type": "video/mp4",
-                                        "data": video_b64
-                                    }
-                                },
-                                {"text": PROMPT_ANALYSE}
-                            ]
-                        }
-                    ]
+                    contents=[uploaded_file, PROMPT_ANALYSE]
                 )
 
                 analyses.append({
                     "url": url,
                     "analyse": response.text
                 })
+
+                client.files.delete(name=uploaded_file.name)
 
         except Exception as e:
             analyses.append({"url": url, "error": str(e)})
