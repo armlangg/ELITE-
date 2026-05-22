@@ -22,6 +22,9 @@ from analysis.downloader import VideoDownloader
 from analysis.gemini import GeminiAnalyzer
 
 
+# --- Flask (défini en premier pour que Gunicorn le trouve même si l'init plante) ---
+app = Flask(__name__)
+
 # --- Logging ---
 logging.basicConfig(
     level=Config.LOG_LEVEL,
@@ -29,7 +32,6 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 log = logging.getLogger("elite")
-
 
 # --- Composition root : on instancie ici, on injecte partout ---
 store = FileJobStore(Config.JOBS_DIR)
@@ -52,10 +54,6 @@ def handle_job(job: Job) -> dict:
 
 worker = JobWorker(store=store, handler=handle_job)
 worker.start()
-
-
-# --- Flask ---
-app = Flask(__name__)
 
 
 @app.get("/health")
