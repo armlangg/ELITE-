@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["deno", "ffmpeg"]
+nixPkgs = ["deno", "ffmpeg", "nodejs"]
 
 [phases.install]
 cmds = ["pip install -r requirements.txt"]
