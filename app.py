@@ -5,9 +5,6 @@ Architecture :
   GET  /status/<id>   -> état du job (pending/processing/done/error)
   GET  /result/<id>   -> résultat final (si done)
   GET  /health        -> healthcheck
-
-Le traitement est asynchrone via un JobWorker single-threaded.
-Aucune logique métier dans ce fichier : juste du routing + composition.
 """
 import logging
 import sys
@@ -33,18 +30,26 @@ logging.basicConfig(
 )
 log = logging.getLogger("elite")
 
-# --- Composition root : on instancie ici, on injecte partout ---
+# --- Écriture des cookies YouTube si fournis ---
+if Config.YOUTUBE_COOKIES:
+    Config.COOKIES_FILE.write_text(Config.YOUTUBE_COOKIES, encoding="utf-8")
+    log.info("cookies.written path=%s", Config.COOKIES_FILE)
+else:
+    log.warning("cookies.missing — YouTube may block downloads")
+
+# --- Composition root ---
 store = FileJobStore(Config.JOBS_DIR)
-downloader = VideoDownloader(Config.DOWNLOAD_DIR, timeout_sec=Config.DOWNLOAD_TIMEOUT_SEC)
+downloader = VideoDownloader(
+    Config.DOWNLOAD_DIR,
+    cookies_file=Config.COOKIES_FILE if Config.YOUTUBE_COOKIES else None,
+    timeout_sec=Config.DOWNLOAD_TIMEOUT_SEC,
+)
 analyzer = GeminiAnalyzer(api_key=Config.GEMINI_API_KEY, model=Config.GEMINI_MODEL)
 
 
 def handle_job(job: Job) -> dict:
-    """Pipeline d'analyse. Appelé par le worker dans son thread.
-    Téléchargement -> analyse Gemini -> nettoyage."""
     url = job.payload["url"]
     opponent = job.payload["opponent_name"]
-
     video_path = downloader.download(url)
     try:
         return analyzer.analyze_video(video_path, opponent)
