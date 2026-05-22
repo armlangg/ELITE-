@@ -26,7 +26,7 @@ class VideoDownloader:
         outtmpl = str(self.download_dir / f"{file_id}.%(ext)s")
 
         ydl_opts = {
-            "format": "best",
+            "format": "18/worst[vcodec!=none][acodec!=none]",
             "outtmpl": outtmpl,
             "quiet": True,
             "no_warnings": False,
