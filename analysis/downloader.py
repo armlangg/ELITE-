@@ -27,21 +27,17 @@ class VideoDownloader:
             "outtmpl": outtmpl,
             "quiet": False,
             "no_warnings": False,
+            # Forcer le client iOS : pas de résolution JS nécessaire
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["ios"],
+                }
+            },
         }
 
         if self.cookies_file and self.cookies_file.exists():
             ydl_opts["cookiefile"] = str(self.cookies_file)
             log.info("download.using_cookies path=%s", self.cookies_file)
-
-        # --- Debug : lister les formats disponibles avant de télécharger ---
-        try:
-            with yt_dlp.YoutubeDL({"quiet": True, "cookiefile": ydl_opts.get("cookiefile")}) as ydl:
-                info = ydl.extract_info(url, download=False)
-                formats = info.get("formats", [])
-                format_summary = [(f.get("format_id"), f.get("ext"), f.get("height"), f.get("vcodec"), f.get("acodec")) for f in formats]
-                log.info("available_formats count=%d formats=%s", len(formats), format_summary[:10])
-        except Exception as e:
-            log.warning("format_debug failed: %s", e)
 
         log.info("download.start url=%s", url)
         try:
