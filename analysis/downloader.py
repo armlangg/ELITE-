@@ -25,7 +25,7 @@ class VideoDownloader:
         output = self.download_dir / filename
 
         ydl_opts = {
-            "format": "worst[ext=mp4]/worst/best[filesize<50M]",
+            "format": "best[height<=480][ext=mp4]/best[height<=480]/best[ext=mp4]/best",
             "merge_output_format": "mp4",
             "outtmpl": str(output),
             "quiet": True,
