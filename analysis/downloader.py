@@ -27,7 +27,7 @@ class VideoDownloader:
             "outtmpl": outtmpl,
             "quiet": False,
             "no_warnings": False,
-            # Forcer le client iOS : pas de résolution JS nécessaire
+            "format": "bestvideo+bestaudio/best",
             "extractor_args": {
                 "youtube": {
                     "player_client": ["ios"],
