@@ -15,18 +15,9 @@ class DownloadError(Exception):
 
 
 def _find_ffmpeg() -> str | None:
-    """Cherche ffmpeg dans le PATH et les chemins nix courants."""
     candidate = shutil.which("ffmpeg")
     if candidate:
         return candidate
-    nix_paths = [
-        "/nix/var/nix/profiles/default/bin/ffmpeg",
-        "/run/current-system/sw/bin/ffmpeg",
-    ]
-    for p in nix_paths:
-        if Path(p).exists():
-            return p
-    # Chercher dans /nix/store
     try:
         result = subprocess.run(
             ["find", "/nix/store", "-name", "ffmpeg", "-type", "f"],
@@ -57,11 +48,16 @@ class VideoDownloader:
             "outtmpl": outtmpl,
             "quiet": False,
             "format": "best[vcodec!=none][acodec!=none]/worst[vcodec!=none][acodec!=none]",
-            "extractor_args": {"youtube": {"player_client": ["tv_embedded"]}},
+            # web_embedded supporte les cookies et contourne les restrictions
+            "extractor_args": {"youtube": {"player_client": ["web_embedded"]}},
         }
 
         if self.ffmpeg:
             ydl_opts["ffmpeg_location"] = self.ffmpeg
+
+        if self.cookies_file and self.cookies_file.exists():
+            ydl_opts["cookiefile"] = str(self.cookies_file)
+            log.info("download.using_cookies")
 
         log.info("download.start url=%s", url)
         try:
@@ -77,14 +73,8 @@ class VideoDownloader:
         raw = matches[0]
         log.info("download.raw path=%s size=%d ext=%s", raw, raw.stat().st_size, raw.suffix)
 
-        # Convertir en H.264 si ffmpeg disponible (Gemini requiert H.264)
-        if self.ffmpeg and raw.suffix.lower() != ".mp4":
-            return self._convert_to_h264(raw)
-
-        # Même si c'est déjà .mp4, forcer H.264 pour garantir la compatibilité Gemini
         if self.ffmpeg:
             return self._convert_to_h264(raw)
-
         return raw
 
     def _convert_to_h264(self, source: Path) -> Path:
@@ -98,9 +88,8 @@ class VideoDownloader:
         log.info("ffmpeg.convert.start %s -> %s", source.name, output.name)
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if result.returncode != 0:
-            log.error("ffmpeg.convert.failed stderr=%s", result.stderr[-500:])
-            # Fallback : renvoyer le fichier original
+            log.error("ffmpeg.convert.failed stderr=%s", result.stderr[-300:])
             return source
         source.unlink(missing_ok=True)
-        log.info("ffmpeg.convert.done path=%s size=%d", output, output.stat().st_size)
+        log.info("ffmpeg.convert.done size=%d", output.stat().st_size)
         return output
