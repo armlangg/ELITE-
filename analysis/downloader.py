@@ -21,13 +21,13 @@ class VideoDownloader:
         self.timeout_sec = timeout_sec
 
     def download(self, url: str) -> Path:
-        filename = f"{uuid.uuid4()}.mp4"
-        output = self.download_dir / filename
+        file_id = str(uuid.uuid4())
+        # On laisse yt-dlp choisir l'extension via %(ext)s
+        outtmpl = str(self.download_dir / f"{file_id}.%(ext)s")
 
         ydl_opts = {
             "format": "best",
-            "merge_output_format": "mp4",
-            "outtmpl": str(output),
+            "outtmpl": outtmpl,
             "quiet": True,
             "no_warnings": False,
         }
@@ -43,8 +43,11 @@ class VideoDownloader:
         except yt_dlp.utils.DownloadError as e:
             raise DownloadError(f"yt-dlp failed: {e}") from e
 
-        if not output.exists():
+        # Trouver le fichier téléchargé (extension inconnue à l'avance)
+        matches = list(self.download_dir.glob(f"{file_id}.*"))
+        if not matches:
             raise DownloadError("yt-dlp returned OK but no file produced")
 
+        output = matches[0]
         log.info("download.done path=%s size=%d", output, output.stat().st_size)
         return output
