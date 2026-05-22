@@ -2,6 +2,7 @@
 from pathlib import Path
 import logging
 import shutil
+import subprocess
 import uuid
 
 import yt_dlp
@@ -13,12 +14,40 @@ class DownloadError(Exception):
     pass
 
 
+def _find_ffmpeg() -> str | None:
+    """Cherche ffmpeg dans le PATH et les chemins nix courants."""
+    candidate = shutil.which("ffmpeg")
+    if candidate:
+        return candidate
+    nix_paths = [
+        "/nix/var/nix/profiles/default/bin/ffmpeg",
+        "/run/current-system/sw/bin/ffmpeg",
+    ]
+    for p in nix_paths:
+        if Path(p).exists():
+            return p
+    # Chercher dans /nix/store
+    try:
+        result = subprocess.run(
+            ["find", "/nix/store", "-name", "ffmpeg", "-type", "f"],
+            capture_output=True, text=True, timeout=5
+        )
+        lines = [l for l in result.stdout.splitlines() if "/bin/ffmpeg" in l]
+        if lines:
+            return lines[0]
+    except Exception:
+        pass
+    return None
+
+
 class VideoDownloader:
     def __init__(self, download_dir: Path, cookies_file: Path = None, timeout_sec: int = 600):
         self.download_dir = download_dir
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.cookies_file = cookies_file
         self.timeout_sec = timeout_sec
+        self.ffmpeg = _find_ffmpeg()
+        log.info("ffmpeg.path=%s", self.ffmpeg or "NOT FOUND")
 
     def download(self, url: str) -> Path:
         file_id = str(uuid.uuid4())
@@ -27,22 +56,12 @@ class VideoDownloader:
         ydl_opts = {
             "outtmpl": outtmpl,
             "quiet": False,
-            # Format avec vidéo+audio dans un seul stream — pas de merge nécessaire
             "format": "best[vcodec!=none][acodec!=none]/worst[vcodec!=none][acodec!=none]",
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["tv_embedded"],
-                }
-            },
+            "extractor_args": {"youtube": {"player_client": ["tv_embedded"]}},
         }
 
-        # Chercher ffmpeg dans le PATH (nix l'installe dans des chemins non-standard)
-        ffmpeg_path = shutil.which("ffmpeg")
-        if ffmpeg_path:
-            ydl_opts["ffmpeg_location"] = ffmpeg_path
-            log.info("ffmpeg.found path=%s", ffmpeg_path)
-        else:
-            log.warning("ffmpeg.not_found — merge formats disabled")
+        if self.ffmpeg:
+            ydl_opts["ffmpeg_location"] = self.ffmpeg
 
         log.info("download.start url=%s", url)
         try:
@@ -55,6 +74,33 @@ class VideoDownloader:
         if not matches:
             raise DownloadError("yt-dlp returned OK but no file produced")
 
-        output = matches[0]
-        log.info("download.done path=%s size=%d", output, output.stat().st_size)
+        raw = matches[0]
+        log.info("download.raw path=%s size=%d ext=%s", raw, raw.stat().st_size, raw.suffix)
+
+        # Convertir en H.264 si ffmpeg disponible (Gemini requiert H.264)
+        if self.ffmpeg and raw.suffix.lower() != ".mp4":
+            return self._convert_to_h264(raw)
+
+        # Même si c'est déjà .mp4, forcer H.264 pour garantir la compatibilité Gemini
+        if self.ffmpeg:
+            return self._convert_to_h264(raw)
+
+        return raw
+
+    def _convert_to_h264(self, source: Path) -> Path:
+        output = source.with_name(source.stem + "_h264.mp4")
+        cmd = [
+            self.ffmpeg, "-y", "-i", str(source),
+            "-c:v", "libx264", "-preset", "fast", "-crf", "28",
+            "-c:a", "aac", "-b:a", "128k",
+            str(output)
+        ]
+        log.info("ffmpeg.convert.start %s -> %s", source.name, output.name)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode != 0:
+            log.error("ffmpeg.convert.failed stderr=%s", result.stderr[-500:])
+            # Fallback : renvoyer le fichier original
+            return source
+        source.unlink(missing_ok=True)
+        log.info("ffmpeg.convert.done path=%s size=%d", output, output.stat().st_size)
         return output
