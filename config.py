@@ -9,10 +9,14 @@ class Config:
     GEMINI_API_KEY: str = os.environ["GEMINI_API_KEY"]
 
     # --- Storage ---
-    # En MVP : /tmp (perdu au restart Railway, acceptable).
-    # Pour migrer vers Redis : remplacer FileJobStore par RedisJobStore dans app.py.
     JOBS_DIR: Path = Path(os.environ.get("JOBS_DIR", "/tmp/elite_jobs"))
     DOWNLOAD_DIR: Path = Path(os.environ.get("DOWNLOAD_DIR", "/tmp/elite_downloads"))
+
+    # --- Cookies YouTube ---
+    # Colle le contenu de ton cookies.txt dans cette variable d'environnement Railway.
+    # Si absente, yt-dlp tente sans cookies (peut être bloqué par YouTube).
+    YOUTUBE_COOKIES: str = os.environ.get("YOUTUBE_COOKIES", "")
+    COOKIES_FILE: Path = Path("/tmp/elite_youtube_cookies.txt")
 
     # --- Gemini ---
     GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
