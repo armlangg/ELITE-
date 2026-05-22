@@ -1,6 +1,7 @@
 """Téléchargement de vidéos via yt-dlp (API Python)."""
 from pathlib import Path
 import logging
+import shutil
 import uuid
 
 import yt_dlp
@@ -23,18 +24,25 @@ class VideoDownloader:
         file_id = str(uuid.uuid4())
         outtmpl = str(self.download_dir / f"{file_id}.%(ext)s")
 
-        # iOS client bypass bot detection sans avoir besoin de cookies.
-        # Ne pas passer cookiefile : iOS/Android ne le supportent pas et sont skippés.
         ydl_opts = {
             "outtmpl": outtmpl,
             "quiet": False,
-            "format": "bestvideo+bestaudio/best",
+            # Format avec vidéo+audio dans un seul stream — pas de merge nécessaire
+            "format": "best[vcodec!=none][acodec!=none]/worst[vcodec!=none][acodec!=none]",
             "extractor_args": {
                 "youtube": {
                     "player_client": ["tv_embedded"],
                 }
             },
         }
+
+        # Chercher ffmpeg dans le PATH (nix l'installe dans des chemins non-standard)
+        ffmpeg_path = shutil.which("ffmpeg")
+        if ffmpeg_path:
+            ydl_opts["ffmpeg_location"] = ffmpeg_path
+            log.info("ffmpeg.found path=%s", ffmpeg_path)
+        else:
+            log.warning("ffmpeg.not_found — merge formats disabled")
 
         log.info("download.start url=%s", url)
         try:
