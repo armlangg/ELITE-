@@ -14,9 +14,10 @@ class DownloadError(Exception):
 
 
 class VideoDownloader:
-    def __init__(self, download_dir: Path, timeout_sec: int = 600):
+    def __init__(self, download_dir: Path, cookies_file: Path = None, timeout_sec: int = 600):
         self.download_dir = download_dir
         self.download_dir.mkdir(parents=True, exist_ok=True)
+        self.cookies_file = cookies_file
         self.timeout_sec = timeout_sec
 
     def download(self, url: str) -> Path:
@@ -30,6 +31,10 @@ class VideoDownloader:
             "quiet": True,
             "no_warnings": False,
         }
+
+        if self.cookies_file and self.cookies_file.exists():
+            ydl_opts["cookiefile"] = str(self.cookies_file)
+            log.info("download.using_cookies path=%s", self.cookies_file)
 
         log.info("download.start url=%s", url)
         try:
