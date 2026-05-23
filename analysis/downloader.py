@@ -31,6 +31,23 @@ def _find_ffmpeg() -> str | None:
     return None
 
 
+def _find_node() -> str | None:
+    candidate = shutil.which("node")
+    if candidate:
+        return candidate
+    try:
+        result = subprocess.run(
+            ["find", "/nix/store", "-name", "node", "-type", "f"],
+            capture_output=True, text=True, timeout=5
+        )
+        lines = [l for l in result.stdout.splitlines() if "/bin/node" in l]
+        if lines:
+            return lines[0]
+    except Exception:
+        pass
+    return None
+
+
 class VideoDownloader:
     def __init__(self, download_dir: Path, cookies_file: Path = None, timeout_sec: int = 600):
         self.download_dir = download_dir
@@ -38,7 +55,9 @@ class VideoDownloader:
         self.cookies_file = cookies_file
         self.timeout_sec = timeout_sec
         self.ffmpeg = _find_ffmpeg()
+        self.node = _find_node()
         log.info("ffmpeg.path=%s", self.ffmpeg or "NOT FOUND")
+        log.info("node.path=%s", self.node or "NOT FOUND")
 
     def download(self, url: str) -> Path:
         file_id = str(uuid.uuid4())
@@ -48,16 +67,25 @@ class VideoDownloader:
             "outtmpl": outtmpl,
             "quiet": False,
             "format": "best[vcodec!=none][acodec!=none]/worst[vcodec!=none][acodec!=none]",
-            # web_embedded supporte les cookies et contourne les restrictions
-            "extractor_args": {"youtube": {"player_client": ["web"]}},
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["web"],
+                    # Contourne le problème SSAP (server-side ads experiment)
+                    "player_skip": ["webpage", "configs"],
+                }
+            },
         }
 
         if self.ffmpeg:
             ydl_opts["ffmpeg_location"] = self.ffmpeg
 
-        if self.cookies_file and self.cookies_file.exists():
+        # Passer les cookies seulement si node est trouvé
+        # (sans node, les cookies déclenchent SSAP sans pouvoir résoudre nsig)
+        if self.cookies_file and self.cookies_file.exists() and self.node:
             ydl_opts["cookiefile"] = str(self.cookies_file)
             log.info("download.using_cookies")
+        else:
+            log.info("download.no_cookies node=%s", self.node)
 
         log.info("download.start url=%s", url)
         try:
