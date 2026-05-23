@@ -65,20 +65,17 @@ class VideoDownloader:
         ydl_opts = {
             "outtmpl": outtmpl,
             "quiet": False,
+            # tv_embedded : pas de JS requis, pas de cookies, fonctionne sur vidéos publiques
             "format": "best[vcodec!=none][acodec!=none]/worst[vcodec!=none][acodec!=none]",
             "extractor_args": {
                 "youtube": {
-                    "player_client": ["web"],
+                    "player_client": ["tv_embedded"],
                 }
             },
         }
 
         if self.ffmpeg:
             ydl_opts["ffmpeg_location"] = self.ffmpeg
-
-        if self.cookies_file and self.cookies_file.exists():
-            ydl_opts["cookiefile"] = str(self.cookies_file)
-            log.info("download.using_cookies")
 
         log.info("download.start url=%s", url)
         try:
@@ -114,3 +111,4 @@ class VideoDownloader:
         source.unlink(missing_ok=True)
         log.info("ffmpeg.convert.done size=%d", output.stat().st_size)
         return output
+        
