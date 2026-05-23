@@ -1,13 +1,7 @@
-"""Serveur Flask ELITE — endpoints d'analyse asynchrone.
-
-Architecture :
-  POST /analyze       -> crée un job, répond 202 avec job_id
-  GET  /status/<id>   -> état du job (pending/processing/done/error)
-  GET  /result/<id>   -> résultat final (si done)
-  GET  /health        -> healthcheck
-"""
+"""Serveur Flask ELITE — endpoints d'analyse asynchrone."""
 import logging
 import sys
+import uuid
 
 from flask import Flask, request, jsonify
 
@@ -18,11 +12,8 @@ from jobs.worker import JobWorker
 from analysis.downloader import VideoDownloader
 from analysis.gemini import GeminiAnalyzer
 
-
-# --- Flask (défini en premier pour que Gunicorn le trouve même si l'init plante) ---
 app = Flask(__name__)
 
-# --- Logging ---
 logging.basicConfig(
     level=Config.LOG_LEVEL,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -30,14 +21,10 @@ logging.basicConfig(
 )
 log = logging.getLogger("elite")
 
-# --- Écriture des cookies YouTube si fournis ---
 if Config.YOUTUBE_COOKIES:
     Config.COOKIES_FILE.write_text(Config.YOUTUBE_COOKIES, encoding="utf-8")
     log.info("cookies.written path=%s", Config.COOKIES_FILE)
-else:
-    log.warning("cookies.missing — YouTube may block downloads")
 
-# --- Composition root ---
 store = FileJobStore(Config.JOBS_DIR)
 downloader = VideoDownloader(
     Config.DOWNLOAD_DIR,
@@ -48,10 +35,15 @@ analyzer = GeminiAnalyzer(api_key=Config.GEMINI_API_KEY, model=Config.GEMINI_MOD
 
 
 def handle_job(job: Job) -> dict:
-    url = job.payload["url"]
     opponent = job.payload["opponent_name"]
-    video_path = downloader.download(url)
+    video_path = Config.DOWNLOAD_DIR / job.payload["video_filename"]
+
+    if not video_path.exists():
+        raise FileNotFoundError(f"Video file not found: {video_path}")
+
     try:
+        if downloader.ffmpeg:
+            video_path = downloader._convert_to_h264(video_path)
         return analyzer.analyze_video(video_path, opponent)
     finally:
         video_path.unlink(missing_ok=True)
@@ -66,19 +58,37 @@ def health():
     return jsonify(status="ok"), 200
 
 
-@app.post("/analyze")
-def analyze():
-    data = request.get_json(silent=True) or {}
-    url = data.get("url")
-    opponent = data.get("opponent_name")
+@app.post("/upload")
+def upload():
+    """Upload direct d'un fichier vidéo + lancement analyse."""
+    opponent = request.form.get("opponent_name")
+    if not opponent:
+        return jsonify(error="Field 'opponent_name' is required"), 400
 
-    if not url or not opponent:
-        return jsonify(error="Fields 'url' and 'opponent_name' are required"), 400
+    if "video" not in request.files:
+        return jsonify(error="Field 'video' (file) is required"), 400
 
-    job = Job(payload={"url": url, "opponent_name": opponent})
+    file = request.files["video"]
+    if not file.filename:
+        return jsonify(error="Empty filename"), 400
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "mp4"
+    filename = f"{uuid.uuid4()}.{ext}"
+    save_path = Config.DOWNLOAD_DIR / filename
+    Config.DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    file.save(str(save_path))
+    log.info("upload.saved path=%s size=%d", save_path, save_path.stat().st_size)
+
+    job = Job(payload={"opponent_name": opponent, "video_filename": filename})
     worker.submit(job)
 
     return jsonify(job_id=job.id, status=job.status.value), 202
+
+
+@app.post("/analyze")
+def analyze():
+    """URL YouTube (kept for future use)."""
+    return jsonify(error="YouTube download temporarily disabled. Use /upload instead."), 503
 
 
 @app.get("/status/<job_id>")
