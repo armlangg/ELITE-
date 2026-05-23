@@ -26,14 +26,13 @@ def _find_binary(name: str) -> str | None:
         )
         lines = [l for l in result.stdout.splitlines() if f"/bin/{name}" in l]
         if lines:
-            return sorted(lines)[-1]  # version la plus récente
+            return sorted(lines)[-1]
     except Exception:
         pass
     return None
 
 
 def _patch_path_with_runtimes():
-    """Ajoute les répertoires de deno/node/ffmpeg au PATH pour que yt-dlp les trouve."""
     extra_dirs = set()
     for binary in ["deno", "node", "nodejs", "ffmpeg"]:
         path = _find_binary(binary)
@@ -42,14 +41,11 @@ def _patch_path_with_runtimes():
             extra_dirs.add(str(Path(path).parent))
         else:
             log.warning("runtime.missing binary=%s", binary)
-
     if extra_dirs:
         current_path = os.environ.get("PATH", "")
         os.environ["PATH"] = ":".join(extra_dirs) + ":" + current_path
-        log.info("PATH.patched added=%s", extra_dirs)
 
 
-# Patch PATH une seule fois au chargement du module
 _patch_path_with_runtimes()
 
 
@@ -73,7 +69,6 @@ class VideoDownloader:
             "extractor_args": {
                 "youtube": {
                     "player_client": ["web"],
-                    "player_skip": ["webpage", "configs"],
                 }
             },
         }
@@ -81,10 +76,9 @@ class VideoDownloader:
         if self.ffmpeg:
             ydl_opts["ffmpeg_location"] = self.ffmpeg
 
-        # Cookies désactivés temporairement (SSAP experiment)
-        # if self.cookies_file and self.cookies_file.exists():
-            #     ydl_opts["cookiefile"] = str(self.cookies_file)
-            #     log.info("download.using_cookies")
+        if self.cookies_file and self.cookies_file.exists():
+            ydl_opts["cookiefile"] = str(self.cookies_file)
+            log.info("download.using_cookies")
 
         log.info("download.start url=%s", url)
         try:
