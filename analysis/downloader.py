@@ -1,6 +1,7 @@
 """Téléchargement de vidéos via yt-dlp (API Python)."""
 from pathlib import Path
 import logging
+import os
 import shutil
 import subprocess
 import uuid
@@ -14,38 +15,42 @@ class DownloadError(Exception):
     pass
 
 
-def _find_ffmpeg() -> str | None:
-    candidate = shutil.which("ffmpeg")
+def _find_binary(name: str) -> str | None:
+    candidate = shutil.which(name)
     if candidate:
         return candidate
     try:
         result = subprocess.run(
-            ["find", "/nix/store", "-name", "ffmpeg", "-type", "f"],
+            ["find", "/nix/store", "-name", name, "-type", "f"],
             capture_output=True, text=True, timeout=5
         )
-        lines = [l for l in result.stdout.splitlines() if "/bin/ffmpeg" in l]
+        lines = [l for l in result.stdout.splitlines() if f"/bin/{name}" in l]
         if lines:
-            return lines[0]
+            return sorted(lines)[-1]  # version la plus récente
     except Exception:
         pass
     return None
 
 
-def _find_node() -> str | None:
-    candidate = shutil.which("node")
-    if candidate:
-        return candidate
-    try:
-        result = subprocess.run(
-            ["find", "/nix/store", "-name", "node", "-type", "f"],
-            capture_output=True, text=True, timeout=5
-        )
-        lines = [l for l in result.stdout.splitlines() if "/bin/node" in l]
-        if lines:
-            return lines[0]
-    except Exception:
-        pass
-    return None
+def _patch_path_with_runtimes():
+    """Ajoute les répertoires de deno/node/ffmpeg au PATH pour que yt-dlp les trouve."""
+    extra_dirs = set()
+    for binary in ["deno", "node", "nodejs", "ffmpeg"]:
+        path = _find_binary(binary)
+        if path:
+            log.info("runtime.found %s=%s", binary, path)
+            extra_dirs.add(str(Path(path).parent))
+        else:
+            log.warning("runtime.missing binary=%s", binary)
+
+    if extra_dirs:
+        current_path = os.environ.get("PATH", "")
+        os.environ["PATH"] = ":".join(extra_dirs) + ":" + current_path
+        log.info("PATH.patched added=%s", extra_dirs)
+
+
+# Patch PATH une seule fois au chargement du module
+_patch_path_with_runtimes()
 
 
 class VideoDownloader:
@@ -54,10 +59,8 @@ class VideoDownloader:
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.cookies_file = cookies_file
         self.timeout_sec = timeout_sec
-        self.ffmpeg = _find_ffmpeg()
-        self.node = _find_node()
-        log.info("ffmpeg.path=%s", self.ffmpeg or "NOT FOUND")
-        log.info("node.path=%s", self.node or "NOT FOUND")
+        self.ffmpeg = shutil.which("ffmpeg")
+        log.info("ffmpeg.which=%s", self.ffmpeg or "NOT FOUND")
 
     def download(self, url: str) -> Path:
         file_id = str(uuid.uuid4())
@@ -70,7 +73,6 @@ class VideoDownloader:
             "extractor_args": {
                 "youtube": {
                     "player_client": ["web"],
-                    # Contourne le problème SSAP (server-side ads experiment)
                     "player_skip": ["webpage", "configs"],
                 }
             },
@@ -79,13 +81,9 @@ class VideoDownloader:
         if self.ffmpeg:
             ydl_opts["ffmpeg_location"] = self.ffmpeg
 
-        # Passer les cookies seulement si node est trouvé
-        # (sans node, les cookies déclenchent SSAP sans pouvoir résoudre nsig)
-        if self.cookies_file and self.cookies_file.exists() and self.node:
+        if self.cookies_file and self.cookies_file.exists():
             ydl_opts["cookiefile"] = str(self.cookies_file)
             log.info("download.using_cookies")
-        else:
-            log.info("download.no_cookies node=%s", self.node)
 
         log.info("download.start url=%s", url)
         try:
