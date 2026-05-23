@@ -81,9 +81,10 @@ class VideoDownloader:
         if self.ffmpeg:
             ydl_opts["ffmpeg_location"] = self.ffmpeg
 
-        if self.cookies_file and self.cookies_file.exists():
-            ydl_opts["cookiefile"] = str(self.cookies_file)
-            log.info("download.using_cookies")
+        # Cookies désactivés temporairement (SSAP experiment)
+        # if self.cookies_file and self.cookies_file.exists():
+            #     ydl_opts["cookiefile"] = str(self.cookies_file)
+            #     log.info("download.using_cookies")
 
         log.info("download.start url=%s", url)
         try:
