@@ -19,7 +19,7 @@ class Config:
     COOKIES_FILE: Path = Path("/tmp/elite_youtube_cookies.txt")
 
     # --- Gemini ---
-   GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
     # --- Logging ---
     LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
