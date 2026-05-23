@@ -49,7 +49,7 @@ class VideoDownloader:
             "quiet": False,
             "format": "best[vcodec!=none][acodec!=none]/worst[vcodec!=none][acodec!=none]",
             # web_embedded supporte les cookies et contourne les restrictions
-            "extractor_args": {"youtube": {"player_client": ["web_embedded"]}},
+            "extractor_args": {"youtube": {"player_client": ["web"]}},
         }
 
         if self.ffmpeg:
