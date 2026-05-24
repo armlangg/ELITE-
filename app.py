@@ -4,6 +4,7 @@ import sys
 import uuid
 
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 
 from config import Config
 from jobs.models import Job, JobStatus
@@ -14,6 +15,7 @@ from analysis.gemini import GeminiAnalyzer
 from analysis.claude_client import ClaudeClient
 
 app = Flask(__name__)
+CORS(app)
 
 logging.basicConfig(
     level=Config.LOG_LEVEL,
