@@ -11,6 +11,7 @@ from jobs.store import FileJobStore
 from jobs.worker import JobWorker
 from analysis.downloader import VideoDownloader
 from analysis.gemini import GeminiAnalyzer
+from analysis.claude_client import ClaudeClient
 
 app = Flask(__name__)
 
@@ -32,6 +33,7 @@ downloader = VideoDownloader(
     timeout_sec=Config.DOWNLOAD_TIMEOUT_SEC,
 )
 analyzer = GeminiAnalyzer(api_key=Config.GEMINI_API_KEY, model=Config.GEMINI_MODEL)
+claude = ClaudeClient(api_key=Config.CLAUDE_API_KEY, model=Config.CLAUDE_MODEL) if Config.CLAUDE_API_KEY else None
 
 
 def handle_job(job: Job) -> dict:
@@ -44,7 +46,23 @@ def handle_job(job: Job) -> dict:
     try:
         if downloader.ffmpeg:
             video_path = downloader._convert_to_h264(video_path)
-        return analyzer.analyze_video(video_path, opponent)
+
+        # Étape 1 : analyse vidéo Gemini
+        gemini_result = analyzer.analyze_video(video_path, opponent)
+        gemini_analysis = gemini_result["analysis"]
+
+        # Étape 2 : game plan Claude
+        if claude:
+            game_plan = claude.generate_game_plan(opponent, gemini_analysis)
+            return {
+                "opponent": opponent,
+                "gemini_analysis": gemini_analysis,
+                "game_plan": game_plan,
+            }
+        else:
+            log.warning("claude.not_configured — returning gemini only")
+            return gemini_result
+
     finally:
         video_path.unlink(missing_ok=True)
 
@@ -60,7 +78,6 @@ def health():
 
 @app.post("/upload")
 def upload():
-    """Upload direct d'un fichier vidéo + lancement analyse."""
     opponent = request.form.get("opponent_name")
     if not opponent:
         return jsonify(error="Field 'opponent_name' is required"), 400
@@ -87,7 +104,6 @@ def upload():
 
 @app.post("/analyze")
 def analyze():
-    """URL YouTube (kept for future use)."""
     return jsonify(error="YouTube download temporarily disabled. Use /upload instead."), 503
 
 
