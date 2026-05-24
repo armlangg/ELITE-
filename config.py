@@ -26,3 +26,7 @@ class Config:
 
     # --- Timeouts ---
     DOWNLOAD_TIMEOUT_SEC: int = int(os.environ.get("DOWNLOAD_TIMEOUT_SEC", "600"))
+
+    # --- Claude ---
+    CLAUDE_API_KEY: str = os.environ.get("CLAUDE_API_KEY", "")
+    CLAUDE_MODEL: str = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
