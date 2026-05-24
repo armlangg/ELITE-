@@ -24,7 +24,7 @@ class ClaudeClient:
         log.info("claude.game_plan.start opponent=%s", opponent_name)
         message = self.client.messages.create(
             model=self.model,
-            max_tokens=4096,
+            max_tokens=8192,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = message.content[0].text
