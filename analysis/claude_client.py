@@ -20,11 +20,19 @@ class ClaudeClient:
         opponent_name: str,
         combined_analysis: str,
         nb_analyses: int = 1,
+        price_minor: int = 49,
+        price_medium: int = 99,
+        price_major: int = 149,
+        price_exceptional: int = 299,
     ) -> dict:
         prompt = PROMPT_CLAUDE_GAMEPLAN.format(
             opponent_name=opponent_name,
             combined_analysis=combined_analysis,
             nb_analyses=nb_analyses,
+            price_minor=price_minor,
+            price_medium=price_medium,
+            price_major=price_major,
+            price_exceptional=price_exceptional,
         )
 
         log.info("claude.game_plan.start opponent=%s sources=%d", opponent_name, nb_analyses)
