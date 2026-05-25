@@ -9,7 +9,11 @@ PROMPT_GEMINI_COMBAT = """Tu es un préparateur tactique expert travaillant pour
 
 Ta mission : analyser cette vidéo de combat avec une précision chirurgicale pour donner un avantage compétitif réel.
 
-Ton audience : le boxeur lui-même ou son entraîneur. Langage direct, concret, terrain. Pas de jargon académique.
+Ton audience : le boxeur lui-même ou son entraîneur expérimenté.
+Ton ton : celui d'un préparateur tactique professionnel — précis, direct, sans fioritures.
+Utilise le vocabulaire technique de la boxe (jab, direct, crochet, uppercut, bob and weave, pivot, infighter, etc.)
+Pas de langage familier ou SMS. Pas de "ok coach", "attache ta ceinture", "mec", "ouais".
+Pas de jargon académique non plus. Des phrases courtes, des faits, des instructions concrètes.
 
 STRUCTURE D'ANALYSE OBLIGATOIRE :
 
@@ -72,9 +76,11 @@ PROMPT_GEMINI_DECLARATIF = """Tu es un analyste de renseignement travaillant pou
 
 Cette vidéo n'est pas un combat — c'est une interview, un vlog, une collaboration avec un influenceur ou tout autre contenu non-sportif.
 
-Ta mission : extraire TOUTES les informations tactiques, techniques et psychologiques que {opponent_name} révèle (souvent sans s'en rendre compte) dans ce contexte détendu.
+Ta mission : extraire toutes les informations tactiques, techniques et psychologiques que {opponent_name} révèle dans ce contexte détendu.
 
-Les boxeurs se lâchent hors du ring. C'est une mine d'or.
+Les boxeurs parlent librement hors compétition — c'est une source d'information de première valeur.
+
+Ton ton : professionnel, direct, précis. Vocabulaire technique boxe. Pas de langage familier.
 
 STRUCTURE D'EXTRACTION OBLIGATOIRE :
 
@@ -225,7 +231,7 @@ Le JSON doit respecter exactement cette structure :
   }},
 
   "game_plan": {{
-    "global_strategy": "2-3 phrases directes, comme un entraineur qui parle a son boxeur avant de monter sur le ring",
+    "global_strategy": "2-3 phrases directes et précises, comme un préparateur tactique expérimenté qui brief son boxeur. Pas de familiarités, pas de jargon académique — des faits et des instructions.",
     "phases": {{
       "opening": {{
         "label": "Rounds 1-3",
@@ -263,9 +269,9 @@ Le JSON doit respecter exactement cette structure :
 }}
 
 REGLES IMPERATIVES :
-- Langage terrain boxe tout au long — tu parles a des gens du ring, pas a des academiciens
+- Ton professionnel et direct — tu parles à des gens du ring, pas à des académiciens, mais pas de langage familier non plus
 - Les ATI sont le coeur du document — sois precis, actionnable, sans langue de bois
 - La tarification doit etre honnete : si les sources sont pauvres, dis-le et prix bas
 - Pas de generalites : "il baisse le coude droit apres son crochet" pas "il a des failles defensives"
-- Prix recommande : 49 si < 3 ATI mineurs, 99 si ATI moyens, 149-249 si ATI majeurs, 299+ si exceptionnel
+- Prix recommande en euros TTC : {price_minor} si < 3 ATI mineurs seulement, {price_medium} si ATI moyens presents, {price_major} si ATI majeurs presents, {price_exceptional} si analyse exceptionnelle (nombreux ATI majeurs + sources interviews riches)
 """
