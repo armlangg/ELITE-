@@ -11,6 +11,7 @@ import stripe
 from config import Config
 from jobs.models import Job, JobStatus
 from jobs.store import FileJobStore
+from jobs.pg_store import PgJobStore
 from jobs.worker import JobWorker
 from analysis.downloader import VideoDownloader
 from analysis.gemini import GeminiAnalyzer
@@ -32,7 +33,13 @@ if Config.YOUTUBE_COOKIES:
     Config.COOKIES_FILE.write_text(Config.YOUTUBE_COOKIES, encoding="utf-8")
     log.info("cookies.written path=%s", Config.COOKIES_FILE)
 
-store = FileJobStore(Config.JOBS_DIR)
+# Utiliser PostgreSQL si DATABASE_URL configurée, sinon FileStore (dev/fallback)
+if Config.DATABASE_URL:
+    store = PgJobStore(Config.DATABASE_URL)
+    log.info("store.pg_active")
+else:
+    store = FileJobStore(Config.JOBS_DIR)
+    log.warning("store.file_active — jobs lost on restart")
 downloader = VideoDownloader(
     Config.DOWNLOAD_DIR,
     cookies_file=Config.COOKIES_FILE if Config.YOUTUBE_COOKIES else None,
