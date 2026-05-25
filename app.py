@@ -5,6 +5,7 @@ import uuid
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import stripe
 
 from config import Config
 from jobs.models import Job, JobStatus
@@ -44,6 +45,7 @@ search = SearchEngine(
     google_cx=Config.GOOGLE_SEARCH_ENGINE_ID,
 ) if Config.YOUTUBE_API_KEY else None
 orchestrator = Orchestrator(search=search, gemini=analyzer, claude=claude) if (search and claude) else None
+stripe.api_key = Config.STRIPE_SECRET_KEY
 
 
 def handle_job(job: Job) -> dict:
@@ -109,6 +111,43 @@ def analyze_url():
     threading.Thread(target=run, daemon=True).start()
 
     return jsonify(job_id=job.id, status=job.status.value), 202
+
+
+@app.post("/create-checkout")
+def create_checkout():
+    """Crée une session Stripe Checkout pour débloquer une analyse."""
+    data = request.get_json(silent=True) or {}
+    job_id = data.get("job_id")
+    prix = data.get("prix", 99)
+    boxer_name = data.get("boxer_name", "Analyse")
+    origin = request.headers.get("Origin", "https://elite-frontend-sandy.vercel.app")
+
+    if not job_id:
+        return jsonify(error="job_id required"), 400
+
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {
+                        "name": f"Analyse ELITE — {boxer_name}",
+                        "description": f"Game plan complet + ATI débloqués · Analyse #{job_id[:8]}",
+                    },
+                    "unit_amount": int(prix * 100),
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            success_url=f"{origin}?paid=true&job_id={job_id}",
+            cancel_url=f"{origin}?job_id={job_id}",
+            metadata={"job_id": job_id},
+        )
+        return jsonify(url=session.url), 200
+    except Exception as e:
+        log.exception("stripe.checkout.error")
+        return jsonify(error=str(e)), 500
 
 
 @app.post("/analyze-boxer")
@@ -220,4 +259,4 @@ def result(job_id: str):
             error=f"job not done (status: {job.status.value})",
             status=job.status.value,
         ), 409
-    return jsonify(job_id=job.id, result=job.result), 200
+    return jsonify(job_id=job.id, result={**job.result, 'job_id': job.id}), 200
