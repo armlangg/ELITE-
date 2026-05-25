@@ -31,6 +31,9 @@ class Config:
     CLAUDE_API_KEY: str = os.environ.get("CLAUDE_API_KEY", "")
     CLAUDE_MODEL: str = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 
+    # --- Database ---
+    DATABASE_URL: str = os.environ.get("DATABASE_URL", "")
+
     # --- Stripe ---
     STRIPE_SECRET_KEY: str = os.environ.get("STRIPE_SECRET_KEY", "")
 
