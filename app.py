@@ -13,6 +13,7 @@ from jobs.worker import JobWorker
 from analysis.downloader import VideoDownloader
 from analysis.gemini import GeminiAnalyzer
 from analysis.claude_client import ClaudeClient
+from analysis.search_engine import SearchEngine
 
 app = Flask(__name__)
 CORS(app)
@@ -36,6 +37,11 @@ downloader = VideoDownloader(
 )
 analyzer = GeminiAnalyzer(api_key=Config.GEMINI_API_KEY, model=Config.GEMINI_MODEL)
 claude = ClaudeClient(api_key=Config.CLAUDE_API_KEY, model=Config.CLAUDE_MODEL) if Config.CLAUDE_API_KEY else None
+search = SearchEngine(
+    youtube_api_key=Config.YOUTUBE_API_KEY,
+    google_api_key=Config.GOOGLE_SEARCH_API_KEY,
+    google_cx=Config.GOOGLE_SEARCH_ENGINE_ID,
+) if Config.YOUTUBE_API_KEY else None
 
 
 def handle_job(job: Job) -> dict:
@@ -101,6 +107,23 @@ def analyze_url():
     threading.Thread(target=run, daemon=True).start()
 
     return jsonify(job_id=job.id, status=job.status.value), 202
+
+
+@app.get("/search/<boxer_name>")
+def search_boxer(boxer_name: str):
+    """Recherche exhaustive de sources sur un boxeur."""
+    if not search:
+        return jsonify(error="Search APIs not configured"), 503
+    try:
+        sources = search.search_boxer(boxer_name, max_results=30)
+        return jsonify(
+            boxer=boxer_name,
+            total=len(sources),
+            sources=[s.to_dict() for s in sources],
+        ), 200
+    except Exception as e:
+        log.exception("search.error boxer=%s", boxer_name)
+        return jsonify(error=str(e)), 500
 
 
 @app.get("/health")
