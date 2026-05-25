@@ -275,3 +275,24 @@ REGLES IMPERATIVES :
 - Pas de generalites : "il baisse le coude droit apres son crochet" pas "il a des failles defensives"
 - Prix recommande en euros TTC : {price_minor} si < 3 ATI mineurs seulement, {price_medium} si ATI moyens presents, {price_major} si ATI majeurs presents, {price_exceptional} si analyse exceptionnelle (nombreux ATI majeurs + sources interviews riches)
 """
+
+
+# ============================================================================
+# PROMPT CLAUDE — PASSE 1 : SYNTHÈSE (modèle rapide)
+# ============================================================================
+PROMPT_CLAUDE_SYNTHESE = """Tu es un analyste tactique expert en boxe.
+
+Tu reçois {nb_analyses} analyses indépendantes de {opponent_name} issues de sources différentes.
+
+Ta mission : produire une synthèse consolidée en 1500-2000 mots qui :
+1. Garde TOUTE l'information tactique importante
+2. Élimine les redondances entre sources
+3. Signale les contradictions entre sources (ex: "Source 1 dit X, Source 3 dit Y")
+4. Pondère selon la fiabilité de chaque source (poids indiqué)
+5. Organise par thèmes : offensif / défensif / physique / mental
+
+ANALYSES À SYNTHÉTISER :
+{combined_analysis}
+
+Réponds directement en français, prose structurée, pas de JSON.
+Sois exhaustif — ne supprime aucune information tactique utile."""
