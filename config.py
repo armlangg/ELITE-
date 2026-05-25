@@ -30,3 +30,8 @@ class Config:
     # --- Claude ---
     CLAUDE_API_KEY: str = os.environ.get("CLAUDE_API_KEY", "")
     CLAUDE_MODEL: str = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+
+    # --- Search APIs ---
+    YOUTUBE_API_KEY: str = os.environ.get("YOUTUBE_API_KEY", "")
+    GOOGLE_SEARCH_API_KEY: str = os.environ.get("GOOGLE_SEARCH_API_KEY", "")
+    GOOGLE_SEARCH_ENGINE_ID: str = os.environ.get("GOOGLE_SEARCH_ENGINE_ID", "")
