@@ -14,6 +14,7 @@ from analysis.downloader import VideoDownloader
 from analysis.gemini import GeminiAnalyzer
 from analysis.claude_client import ClaudeClient
 from analysis.search_engine import SearchEngine
+from analysis.orchestrator import Orchestrator
 
 app = Flask(__name__)
 CORS(app)
@@ -42,6 +43,7 @@ search = SearchEngine(
     google_api_key=Config.GOOGLE_SEARCH_API_KEY,
     google_cx=Config.GOOGLE_SEARCH_ENGINE_ID,
 ) if Config.YOUTUBE_API_KEY else None
+orchestrator = Orchestrator(search=search, gemini=analyzer, claude=claude) if (search and claude) else None
 
 
 def handle_job(job: Job) -> dict:
@@ -104,6 +106,37 @@ def analyze_url():
     import threading
     def run():
         url_worker._process(job.id)
+    threading.Thread(target=run, daemon=True).start()
+
+    return jsonify(job_id=job.id, status=job.status.value), 202
+
+
+@app.post("/analyze-boxer")
+def analyze_boxer():
+    """Pipeline complète : recherche + analyse + game plan."""
+    if not orchestrator:
+        return jsonify(error="Search or Claude APIs not configured"), 503
+
+    data = request.get_json(silent=True) or {}
+    boxer_name = data.get("boxer_name")
+    extra_urls = data.get("extra_urls", [])
+
+    if not boxer_name:
+        return jsonify(error="Field 'boxer_name' is required"), 400
+
+    job = Job(payload={"boxer_name": boxer_name, "extra_urls": extra_urls})
+
+    def handle_boxer_job(job: Job) -> dict:
+        return orchestrator.analyze_boxer(
+            boxer_name=job.payload["boxer_name"],
+            extra_urls=job.payload.get("extra_urls"),
+        )
+
+    worker_instance = JobWorker(store=store, handler=handle_boxer_job)
+    store.create(job)
+    import threading
+    def run():
+        worker_instance._process(job.id)
     threading.Thread(target=run, daemon=True).start()
 
     return jsonify(job_id=job.id, status=job.status.value), 202
