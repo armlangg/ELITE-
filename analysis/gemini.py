@@ -1,7 +1,6 @@
 """Analyse vidéo via Gemini 2.5 Flash.
-Supporte deux modes :
-- Fichier local (Path) : upload via Files API
-- URL YouTube/web : passage direct à Gemini sans téléchargement
+Deux modes : combat (analyse visuelle) et déclaratif (interviews/vlogs).
+Supporte URL directe (YouTube) et fichier local.
 """
 from pathlib import Path
 from typing import Union
@@ -11,41 +10,25 @@ import time
 from google import genai
 from google.genai import types
 
+from .prompts import PROMPT_GEMINI_COMBAT, PROMPT_GEMINI_DECLARATIF
+
 log = logging.getLogger(__name__)
 
-PROMPT_ANALYSE = """Tu es un analyste tactique expert en boxe anglaise professionnelle.
-Analyse la vidéo de combat de {opponent_name} et produis une analyse tactique complete selon cette structure :
+# Mots-clés pour détecter si une source est déclarative
+DECLARATIF_KEYWORDS = [
+    "interview", "podcast", "vlog", "chat", "talks", "parle",
+    "q&a", "day in", "behind", "coulisses", "reaction", "react",
+    "challenge", "influenceur", "influencer", "feat", "with",
+    "explains", "reveals", "confie", "raconte"
+]
 
-0. ANALYSE DE LA SOURCE ET FIABILITE DU MATERIEL
-- Type de contenu identifie
-- Coefficient de fiabilite applique (%)
-- Risque d intox : oui / possible / non
 
-1. PROFIL GENERAL
-- Style de boxe, garde, distance preferee
-
-2. ANALYSE SPATIALE
-- Zones offensives, defensives, coups recus, deplacements
-
-3. STATISTIQUES OFFENSIVES
-- Frequence, efficacite, distance, signal avant-coureur par coup
-
-4. COMBINAISONS FAVORITES
-- Top 5 avec sequence, declencheur, frequence, efficacite
-
-5. ANALYSE DEFENSIVE
-C01 a C20 : defense principale, secondaire, contre, expositions, taux succes, vulnerabilite, confiance
-
-6. FAIBLESSES STRUCTURELLES
-Par priorite : description, situation, exploitation
-
-7. CONDITIONNEMENT
-Evolution par round, fatigue, fin de round, resistance
-
-8. PSYCHOLOGIE
-Pression, encaissement, difficulte, frustration
-
-Reponds en francais. Precis, factuel, quantifie."""
+def _detect_mode(title: str, description: str = "") -> str:
+    """Détecte si la source est un combat ou du contenu déclaratif."""
+    text = (title + " " + description).lower()
+    if any(k in text for k in DECLARATIF_KEYWORDS):
+        return "declaratif"
+    return "combat"
 
 
 class GeminiAnalyzer:
@@ -53,19 +36,36 @@ class GeminiAnalyzer:
         self.client = genai.Client(api_key=api_key)
         self.model = model
 
-    def analyze_video(self, source: Union[Path, str], opponent_name: str) -> dict:
+    def analyze_video(
+        self,
+        source: Union[Path, str],
+        opponent_name: str,
+        mode: str = "auto",
+        title: str = "",
+        description: str = "",
+    ) -> dict:
         """
         source : Path (fichier local) ou str (URL YouTube/web)
+        mode : "combat" | "declaratif" | "auto" (détection automatique)
         """
-        if isinstance(source, str):
-            return self._analyze_url(source, opponent_name)
-        else:
-            return self._analyze_file(source, opponent_name)
+        if mode == "auto":
+            mode = _detect_mode(title, description)
 
-    def _analyze_url(self, url: str, opponent_name: str) -> dict:
-        """Analyse directe via URL — pas de téléchargement."""
-        log.info("gemini.url.start url=%s", url)
-        prompt = PROMPT_ANALYSE.format(opponent_name=opponent_name)
+        log.info("gemini.analyze mode=%s source=%s", mode, str(source)[:80])
+
+        if isinstance(source, str):
+            return self._analyze_url(source, opponent_name, mode, title)
+        else:
+            return self._analyze_file(source, opponent_name, mode)
+
+    def _get_prompt(self, opponent_name: str, mode: str) -> str:
+        if mode == "declaratif":
+            return PROMPT_GEMINI_DECLARATIF.format(opponent_name=opponent_name)
+        return PROMPT_GEMINI_COMBAT.format(opponent_name=opponent_name)
+
+    def _analyze_url(self, url: str, opponent_name: str, mode: str, title: str = "") -> dict:
+        log.info("gemini.url.start url=%s mode=%s", url, mode)
+        prompt = self._get_prompt(opponent_name, mode)
 
         response = self.client.models.generate_content(
             model=self.model,
@@ -74,30 +74,30 @@ class GeminiAnalyzer:
                 prompt,
             ],
         )
-        log.info("gemini.url.done")
+        log.info("gemini.url.done mode=%s", mode)
         return {
             "opponent": opponent_name,
             "analysis": response.text,
             "model": self.model,
+            "mode": mode,
             "source_type": "url",
             "source": url,
+            "title": title,
         }
 
-    def _analyze_file(self, video_path: Path, opponent_name: str) -> dict:
-        """Analyse via fichier uploadé (Files API)."""
-        log.info("gemini.upload.start path=%s", video_path)
+    def _analyze_file(self, video_path: Path, opponent_name: str, mode: str) -> dict:
+        log.info("gemini.upload.start path=%s mode=%s", video_path, mode)
         uploaded = self.client.files.upload(file=str(video_path))
         log.info("gemini.upload.done uri=%s", uploaded.uri)
 
         self._wait_until_active(uploaded.name)
 
-        prompt = PROMPT_ANALYSE.format(opponent_name=opponent_name)
-        log.info("gemini.generate.start")
+        prompt = self._get_prompt(opponent_name, mode)
         response = self.client.models.generate_content(
             model=self.model,
             contents=[uploaded, prompt],
         )
-        log.info("gemini.generate.done")
+        log.info("gemini.file.done mode=%s", mode)
 
         try:
             self.client.files.delete(name=uploaded.name)
@@ -108,6 +108,7 @@ class GeminiAnalyzer:
             "opponent": opponent_name,
             "analysis": response.text,
             "model": self.model,
+            "mode": mode,
             "source_type": "file",
         }
 
