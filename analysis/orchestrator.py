@@ -98,25 +98,37 @@ class Orchestrator:
 
         log.info("orchestrator.analyzing videos=%d", len(video_sources))
 
-        # 3. Analyse Gemini sur chaque vidéo
+        # 3. Analyse Gemini en parallèle sur chaque vidéo
+        import concurrent.futures
         analyses = []
-        for i, source in enumerate(video_sources):
+
+        def analyze_one(source):
             try:
-                log.info("orchestrator.gemini url=%s [%d/%d]", source.url, i+1, len(video_sources))
+                log.info("orchestrator.gemini url=%s", source.url[:60])
                 result = self.gemini.analyze_video(
-                        source.url, boxer_name,
-                        mode="auto",
-                        title=source.title,
-                        description=source.description,
-                    )
-                analyses.append({
+                    source.url, boxer_name,
+                    mode="auto",
+                    title=source.title,
+                    description=source.description,
+                )
+                return {
                     "source": source.to_dict(),
                     "analysis": result["analysis"],
                     "weight": source.weight,
-                })
+                }
             except Exception as e:
-                log.warning("orchestrator.gemini.skip url=%s error=%s", source.url, e)
-                continue
+                log.warning("orchestrator.gemini.skip url=%s error=%s", source.url[:60], e)
+                return None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(analyze_one, s): s for s in video_sources}
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                if result:
+                    analyses.append(result)
+
+        # Trier par poids décroissant
+        analyses.sort(key=lambda x: x["weight"], reverse=True)
 
         if not analyses:
             raise ValueError(f"Aucune analyse Gemini n'a abouti pour {boxer_name}")
