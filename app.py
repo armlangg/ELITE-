@@ -73,6 +73,36 @@ worker = JobWorker(store=store, handler=handle_job)
 worker.start()
 
 
+@app.post("/analyze-url")
+def analyze_url():
+    """Test endpoint : analyse directe via URL YouTube."""
+    data = request.get_json(silent=True) or {}
+    url = data.get("url")
+    opponent = data.get("opponent_name")
+
+    if not url or not opponent:
+        return jsonify(error="Fields 'url' and 'opponent_name' are required"), 400
+
+    def handle_url_job(job: Job) -> dict:
+        gemini_result = analyzer.analyze_video(job.payload["url"], job.payload["opponent_name"])
+        if claude:
+            game_plan = claude.generate_game_plan(job.payload["opponent_name"], gemini_result["analysis"])
+            return {"opponent": job.payload["opponent_name"], "gemini_analysis": gemini_result["analysis"], "game_plan": game_plan}
+        return gemini_result
+
+    job = Job(payload={"url": url, "opponent_name": opponent})
+    # Use inline worker for URL jobs
+    from jobs.worker import JobWorker
+    url_worker = JobWorker(store=store, handler=handle_url_job)
+    store.create(job)
+    import threading
+    def run():
+        url_worker._process(job.id)
+    threading.Thread(target=run, daemon=True).start()
+
+    return jsonify(job_id=job.id, status=job.status.value), 202
+
+
 @app.get("/health")
 def health():
     return jsonify(status="ok"), 200
