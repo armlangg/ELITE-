@@ -31,6 +31,9 @@ class Config:
     CLAUDE_API_KEY: str = os.environ.get("CLAUDE_API_KEY", "")
     CLAUDE_MODEL: str = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 
+    # --- Stripe ---
+    STRIPE_SECRET_KEY: str = os.environ.get("STRIPE_SECRET_KEY", "")
+
     # --- Tarification Pro ---
     PRICE_PRO_MINOR: int = int(os.environ.get("PRICE_PRO_MINOR", "49"))
     PRICE_PRO_MEDIUM: int = int(os.environ.get("PRICE_PRO_MEDIUM", "99"))
