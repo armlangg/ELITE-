@@ -1,10 +1,11 @@
 """Moteur de recherche agent pour ELITE.
 Recherche exhaustive de tout contenu disponible sur un boxeur.
-Stratégie en 4 couches :
-1. Recherche directe (nom, variantes)
-2. Recherche contextuelle (club, pays, entraîneur)
-3. Recherche par association (adversaires, compétitions)
-4. Recherche cross-plateforme (YouTube, web, réseaux sociaux)
+Stratégie en 5 couches :
+1. Recherche directe (nom + boxe)
+2. Recherche par variantes et orthographes
+3. Recherche contextuelle (club, ville, fédération extraits des premiers résultats)
+4. Recherche cross-plateforme (Instagram, Facebook, TikTok, Dailymotion)
+5. Recherche par association (compétitions, adversaires)
 """
 import logging
 import re
@@ -14,23 +15,38 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-# Pondération par type de source
 SOURCE_WEIGHTS = {
     "combat_officiel_complet": 1.0,
     "combat_officiel_extrait": 0.8,
     "combat_amateur_complet": 0.9,
     "combat_amateur_extrait": 0.7,
-    "sparring": 0.6,
+    "sparring": 0.65,
     "highlight": 0.5,
-    "interview": 0.3,
-    "conference_presse": 0.3,
-    "entrainement": 0.4,
+    "interview": 0.55,
+    "interview_technique": 0.75,
+    "shadow_entrainement": 0.6,
     "inconnu": 0.4,
 }
 
-YOUTUBE_PLATFORMS = ["youtube.com", "youtu.be"]
-SOCIAL_PLATFORMS = ["instagram.com", "facebook.com", "tiktok.com", "twitter.com", "x.com"]
-VIDEO_PLATFORMS = ["dailymotion.com", "vimeo.com", "twitch.tv"]
+BOXING_KEYWORDS = [
+    "box", "boxi", "boxing", "combat", "fight", "ko", "knockout", "punch",
+    "ring", "round", "champion", "titre", "poids", "sparring", "gant",
+    "uppercut", "crochet", "jab", "direct", "shadow", "sac de frappe",
+    "entrainement", "training", "mbc", "ffb", "ffboxe", "aiba", "wb",
+    "amateur", "compétition", "tournoi", "gala"
+]
+
+CLUB_PATTERNS = [
+    r'\b(bc|bm|mbc|abc|club|gym|boxe|boxing)\s+\w+',
+    r'\b(marseille|paris|lyon|nice|toulouse|bordeaux|nantes|strasbourg|montpellier|lille)\b',
+]
+
+DECLARATIF_KEYWORDS = [
+    "interview", "podcast", "vlog", "chat", "talks", "parle", "q&a",
+    "day in", "behind", "coulisses", "reaction", "react", "challenge",
+    "influenceur", "influencer", "feat", "with", "explains", "reveals",
+    "confie", "raconte", "présentation", "portrait"
+]
 
 
 @dataclass
@@ -50,28 +66,56 @@ class Source:
 
 
 def _detect_platform(url: str) -> str:
-    for p in YOUTUBE_PLATFORMS + SOCIAL_PLATFORMS + VIDEO_PLATFORMS:
+    for p in ["youtube", "instagram", "facebook", "tiktok", "twitter", "x.com",
+              "dailymotion", "vimeo", "twitch"]:
         if p in url:
-            return p.split(".")[0]
+            return p
     return "web"
 
 
 def _classify_source(title: str, description: str = "") -> tuple[str, float]:
-    """Classifie le type de source et retourne (type, poids)."""
     text = (title + " " + description).lower()
-    if any(w in text for w in ["full fight", "combat complet", "full match", "ko", "tko", "stoppage"]):
-        if any(w in text for w in ["amateur", "aiba", "olympic", "youth", "junior"]):
+    if any(w in text for w in ["full fight", "combat complet", "full match"]):
+        if any(w in text for w in ["amateur", "aiba", "olympic", "youth"]):
             return "combat_amateur_complet", SOURCE_WEIGHTS["combat_amateur_complet"]
         return "combat_officiel_complet", SOURCE_WEIGHTS["combat_officiel_complet"]
-    if any(w in text for w in ["highlights", "best moments", "knockdown", "round"]):
+    if any(w in text for w in ["ko", "knockout", "highlights", "best moments", "knockdown"]):
         return "combat_officiel_extrait", SOURCE_WEIGHTS["combat_officiel_extrait"]
-    if any(w in text for w in ["sparring", "spar", "entraînement training"]):
+    if any(w in text for w in ["sparring", "spar"]):
         return "sparring", SOURCE_WEIGHTS["sparring"]
-    if any(w in text for w in ["interview", "press conference", "conférence"]):
+    if any(w in text for w in ["shadow", "shadowboxing", "sac de frappe", "pad work", "mitaines"]):
+        return "shadow_entrainement", SOURCE_WEIGHTS["shadow_entrainement"]
+    if any(w in text for w in DECLARATIF_KEYWORDS):
+        if any(w in text for w in ["technique", "tactique", "stratégie", "préparation", "camp"]):
+            return "interview_technique", SOURCE_WEIGHTS["interview_technique"]
         return "interview", SOURCE_WEIGHTS["interview"]
-    if any(w in text for w in ["workout", "training", "pad work", "bag work"]):
-        return "entrainement", SOURCE_WEIGHTS["entrainement"]
+    if any(w in text for w in ["workout", "training", "entrainement"]):
+        return "shadow_entrainement", SOURCE_WEIGHTS["shadow_entrainement"]
     return "inconnu", SOURCE_WEIGHTS["inconnu"]
+
+
+def _is_boxing_related(title: str, description: str = "") -> bool:
+    text = (title + " " + description).lower()
+    return any(k in text for k in BOXING_KEYWORDS)
+
+
+def _extract_context(sources: list) -> dict:
+    """Extrait le club, la ville et les infos contextuelles des premiers résultats."""
+    context = {"clubs": set(), "cities": set(), "competitions": set()}
+    for s in sources[:10]:
+        text = (s.title + " " + s.description).lower()
+        # Clubs
+        for pattern in CLUB_PATTERNS:
+            matches = re.findall(pattern, text)
+            for m in matches:
+                if len(m) > 2:
+                    context["clubs"].add(m.strip())
+        # Compétitions
+        for kw in ["championnat", "tournoi", "gala", "coupe", "open", "national", "régional"]:
+            if kw in text:
+                idx = text.find(kw)
+                context["competitions"].add(text[max(0,idx-5):idx+25].strip())
+    return {k: list(v)[:3] for k, v in context.items()}
 
 
 class SearchEngine:
@@ -81,63 +125,88 @@ class SearchEngine:
         self.google_cx = google_cx
         self.client = httpx.Client(timeout=15)
 
-    def search_boxer(self, boxer_name: str, max_results: int = 20) -> list[Source]:
-        """Point d'entrée principal. Recherche exhaustive en 4 couches."""
+    def search_boxer(self, boxer_name: str, max_results: int = 30) -> list[Source]:
         log.info("search.start boxer=%s", boxer_name)
         all_sources: dict[str, Source] = {}
 
-        # Couche 1 — Recherche directe YouTube
-        youtube_results = self._search_youtube(boxer_name, max_results=15)
-        for s in youtube_results:
-            all_sources[s.url] = s
-
-        # Couche 2 — Recherche YouTube avec variantes
-        variants = self._generate_variants(boxer_name)
-        for variant in variants[:3]:
-            results = self._search_youtube(variant, max_results=8)
-            for s in results:
+        # ── Couche 1 : Recherche directe YouTube avec contexte boxe ──────────
+        for query in [
+            f"{boxer_name} boxe boxing",
+            f"{boxer_name} combat fight",
+            f"{boxer_name} boxeur knockout",
+        ]:
+            for s in self._search_youtube(query, max_results=10):
                 if s.url not in all_sources:
                     all_sources[s.url] = s
 
-        # Couche 3 — Recherche web générale (articles, stats, réseaux sociaux)
-        web_results = self._search_web(boxer_name, max_results=10)
-        for s in web_results:
-            if s.url not in all_sources:
-                all_sources[s.url] = s
+        # ── Couche 2 : Variantes orthographiques ─────────────────────────────
+        for variant in self._generate_variants(boxer_name)[:4]:
+            for s in self._search_youtube(f"{variant} boxe", max_results=5):
+                if s.url not in all_sources:
+                    all_sources[s.url] = s
 
-        # Couche 4 — Recherche YouTube combinée (boxeur + combat/fight/vs)
-        for suffix in ["full fight", "combat", "knockout", "highlights"]:
-            results = self._search_youtube(f"{boxer_name} {suffix}", max_results=5)
-            for s in results:
+        # ── Couche 3 : Contexte extrait (club, compétitions) ─────────────────
+        context = _extract_context(list(all_sources.values()))
+        for club in context["clubs"]:
+            for s in self._search_youtube(f"{boxer_name} {club}", max_results=5):
+                if s.url not in all_sources:
+                    all_sources[s.url] = s
+            for s in self._search_web(f"{boxer_name} {club} boxe", max_results=3):
+                if s.url not in all_sources:
+                    all_sources[s.url] = s
+
+        # ── Couche 4 : Multi-plateformes ─────────────────────────────────────
+        platforms = [
+            ("instagram.com", f"{boxer_name} boxe"),
+            ("instagram.com", f"{boxer_name} boxing sparring"),
+            ("facebook.com", f"{boxer_name} boxe combat"),
+            ("tiktok.com", f"{boxer_name} boxing"),
+            ("dailymotion.com", f"{boxer_name} boxe"),
+        ]
+        for site, query in platforms:
+            for s in self._search_web(query, max_results=4, site=site):
+                if s.url not in all_sources:
+                    s.weight = max(s.weight, 0.55)
+                    all_sources[s.url] = s
+
+        # Recherche club sur Instagram (très utile pour amateurs)
+        for club in context["clubs"]:
+            for s in self._search_web(f"{club} boxe", max_results=3, site="instagram.com"):
+                if s.url not in all_sources:
+                    all_sources[s.url] = s
+
+        # ── Couche 5 : Fédérations et compétitions ───────────────────────────
+        for query in [
+            f"{boxer_name} ffboxe fédération",
+            f"{boxer_name} championnat régional national",
+            f"{boxer_name} gala boxe",
+        ]:
+            for s in self._search_web(query, max_results=3):
                 if s.url not in all_sources:
                     all_sources[s.url] = s
 
         sources = list(all_sources.values())
 
-        # Trier par poids décroissant
-        sources.sort(key=lambda x: x.weight, reverse=True)
+        # Filtrer hors sujet si on a assez de sources boxe
+        boxing = [s for s in sources if _is_boxing_related(s.title, s.description)]
+        if len(boxing) >= 3:
+            sources = boxing
 
-        log.info("search.done boxer=%s total=%d", boxer_name, len(sources))
+        sources.sort(key=lambda x: x.weight, reverse=True)
+        log.info("search.done boxer=%s total=%d boxing=%d", boxer_name, len(sources), len(boxing))
         return sources[:max_results]
 
     def _generate_variants(self, name: str) -> list[str]:
-        """Génère des variantes de recherche : initiales, orthographe, surnom."""
         variants = [name]
         parts = name.strip().split()
         if len(parts) >= 2:
-            # Prénom + Nom inversé
             variants.append(f"{parts[-1]} {parts[0]}")
-            # Initiale prénom + Nom
             variants.append(f"{parts[0][0]}. {' '.join(parts[1:])}")
-            # Juste le nom de famille
             variants.append(parts[-1])
-            # Avec "boxer" ou "boxeur"
-            variants.append(f"{name} boxer")
-            variants.append(f"{name} boxeur")
+            variants.append(parts[0])
         return variants
 
     def _search_youtube(self, query: str, max_results: int = 10) -> list[Source]:
-        """Recherche YouTube Data API v3."""
         try:
             params = {
                 "part": "snippet",
@@ -150,7 +219,6 @@ class SearchEngine:
             res = self.client.get("https://www.googleapis.com/youtube/v3/search", params=params)
             res.raise_for_status()
             data = res.json()
-
             sources = []
             for item in data.get("items", []):
                 vid_id = item["id"].get("videoId")
@@ -170,33 +238,32 @@ class SearchEngine:
                     published_at=snippet.get("publishedAt"),
                     thumbnail=snippet.get("thumbnails", {}).get("medium", {}).get("url"),
                 ))
-            log.info("youtube.search query=%s results=%d", query, len(sources))
+            log.info("youtube.search query=%s results=%d", query[:50], len(sources))
             return sources
         except Exception as e:
-            log.error("youtube.search.error query=%s error=%s", query, e)
+            log.error("youtube.search.error query=%s error=%s", query[:50], e)
             return []
 
-    def _search_web(self, query: str, max_results: int = 10) -> list[Source]:
-        """Google Custom Search API pour web + réseaux sociaux."""
+    def _search_web(self, query: str, max_results: int = 10, site: str = None) -> list[Source]:
         try:
             sources = []
-            # Recherche vidéos sur réseaux sociaux
-            for platform_query in [
+            queries = [f"{query} site:{site}"] if site else [
                 f"{query} site:instagram.com",
                 f"{query} site:facebook.com",
                 f"{query} site:tiktok.com",
-                f"{query} boxe combat",
-            ]:
+                f"{query} boxe",
+            ]
+            per_query = max(2, max_results // len(queries))
+            for q in queries:
                 params = {
                     "key": self.google_key,
                     "cx": self.google_cx,
-                    "q": platform_query,
-                    "num": 5,
+                    "q": q,
+                    "num": min(per_query, 5),
                 }
                 res = self.client.get("https://www.googleapis.com/customsearch/v1", params=params)
                 res.raise_for_status()
                 data = res.json()
-
                 for item in data.get("items", []):
                     url = item.get("link", "")
                     title = item.get("title", "")
@@ -211,11 +278,10 @@ class SearchEngine:
                         weight=weight,
                         description=snippet[:200],
                     ))
-
-            log.info("web.search query=%s results=%d", query, len(sources))
+            log.info("web.search query=%s results=%d", query[:50], len(sources))
             return sources[:max_results]
         except Exception as e:
-            log.error("web.search.error query=%s error=%s", query, e)
+            log.error("web.search.error query=%s error=%s", query[:50], e)
             return []
 
     def close(self):
