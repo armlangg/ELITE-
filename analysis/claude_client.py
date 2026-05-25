@@ -5,7 +5,7 @@ import re
 
 import anthropic
 
-from .prompts import PROMPT_CLAUDE_GAMEPLAN
+from .prompts import PROMPT_CLAUDE_GAMEPLAN, PROMPT_CLAUDE_SYNTHESE
 
 log = logging.getLogger(__name__)
 
@@ -14,6 +14,25 @@ class ClaudeClient:
     def __init__(self, api_key: str, model: str = "claude-sonnet-4-6"):
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = model
+        # Modèle rapide pour la synthèse passe 1
+        self.fast_model = "claude-haiku-4-5-20251001"
+
+    def synthesize_analyses(self, opponent_name: str, combined_analysis: str, nb_analyses: int) -> str:
+        """Passe 1 — Synthèse rapide avec Haiku."""
+        prompt = PROMPT_CLAUDE_SYNTHESE.format(
+            opponent_name=opponent_name,
+            combined_analysis=combined_analysis,
+            nb_analyses=nb_analyses,
+        )
+        log.info("claude.synthesize.start opponent=%s", opponent_name)
+        message = self.client.messages.create(
+            model=self.fast_model,
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        result = message.content[0].text
+        log.info("claude.synthesize.done tokens=%d", message.usage.output_tokens)
+        return result
 
     def generate_game_plan(
         self,
