@@ -145,7 +145,6 @@ class SearchEngine:
                 "type": "video",
                 "maxResults": max_results,
                 "key": self.youtube_key,
-                "relevanceLanguage": "fr",
                 "safeSearch": "none",
             }
             res = self.client.get("https://www.googleapis.com/youtube/v3/search", params=params)
