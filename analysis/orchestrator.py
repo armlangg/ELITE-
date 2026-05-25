@@ -91,7 +91,11 @@ class Orchestrator:
         video_sources = [
             s for s in sources
             if s.platform in GEMINI_SUPPORTED_PLATFORMS
+            or "youtube.com" in s.url
+            or "youtu.be" in s.url
         ][:MAX_VIDEO_SOURCES]
+
+        log.info("orchestrator.video_sources count=%d", len(video_sources))
 
         if not video_sources:
             raise ValueError(f"Aucune source vidéo trouvée pour {boxer_name}")
