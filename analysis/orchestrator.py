@@ -137,8 +137,18 @@ class Orchestrator:
         if not analyses:
             raise ValueError(f"Aucune analyse Gemini n'a abouti pour {boxer_name}")
 
-        # 4. Synthèse Claude — fusionner toutes les analyses + game plan
+        # 4a. Synthèse rapide Haiku — distille toutes les analyses en 2000 mots
         combined_analysis = self._combine_analyses(boxer_name, analyses)
+        log.info("orchestrator.combined_chars=%d", len(combined_analysis))
+
+        if len(analyses) > 1:
+            log.info("orchestrator.synthesize.start")
+            combined_analysis = self.claude.synthesize_analyses(
+                boxer_name, combined_analysis, nb_analyses=len(analyses)
+            )
+            log.info("orchestrator.synthesize.done chars=%d", len(combined_analysis))
+
+        # 4b. Game plan + ATI Sonnet — sur la synthèse distillée
         from config import Config
         if boxer_level == "pro":
             prices = dict(price_minor=Config.PRICE_PRO_MINOR, price_medium=Config.PRICE_PRO_MEDIUM,
@@ -165,17 +175,14 @@ class Orchestrator:
         }
 
     def _combine_analyses(self, boxer_name: str, analyses: list[dict]) -> str:
-        """Combine plusieurs analyses Gemini en un seul texte structuré pour Claude."""
+        """Combine toutes les analyses Gemini sans troncature — qualité maximale."""
         if len(analyses) == 1:
             return analyses[0]["analysis"]
 
         combined = f"# Analyses consolidées de {boxer_name} ({len(analyses)} sources)\n\n"
         for i, a in enumerate(analyses):
             source = a["source"]
-            combined += f"## Source {i+1} — {source['title']} (poids: {source['weight']:.1f})\n"
-            combined += f"URL: {source['url']}\n"
-            combined += f"Type: {source['source_type']}\n\n"
+            combined += f"## Source {i+1} — {source['title']} (poids: {source['weight']:.1f}, type: {source['source_type']})\n\n"
             combined += a["analysis"]
             combined += "\n\n---\n\n"
-
         return combined
