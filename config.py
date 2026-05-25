@@ -31,6 +31,18 @@ class Config:
     CLAUDE_API_KEY: str = os.environ.get("CLAUDE_API_KEY", "")
     CLAUDE_MODEL: str = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 
+    # --- Tarification Pro ---
+    PRICE_PRO_MINOR: int = int(os.environ.get("PRICE_PRO_MINOR", "49"))
+    PRICE_PRO_MEDIUM: int = int(os.environ.get("PRICE_PRO_MEDIUM", "99"))
+    PRICE_PRO_MAJOR: int = int(os.environ.get("PRICE_PRO_MAJOR", "149"))
+    PRICE_PRO_EXCEPTIONAL: int = int(os.environ.get("PRICE_PRO_EXCEPTIONAL", "299"))
+
+    # --- Tarification Amateur ---
+    PRICE_AMATEUR_MINOR: int = int(os.environ.get("PRICE_AMATEUR_MINOR", "29"))
+    PRICE_AMATEUR_MEDIUM: int = int(os.environ.get("PRICE_AMATEUR_MEDIUM", "59"))
+    PRICE_AMATEUR_MAJOR: int = int(os.environ.get("PRICE_AMATEUR_MAJOR", "89"))
+    PRICE_AMATEUR_EXCEPTIONAL: int = int(os.environ.get("PRICE_AMATEUR_EXCEPTIONAL", "129"))
+
     # --- Search APIs ---
     YOUTUBE_API_KEY: str = os.environ.get("YOUTUBE_API_KEY", "")
     GOOGLE_SEARCH_API_KEY: str = os.environ.get("GOOGLE_SEARCH_API_KEY", "")
