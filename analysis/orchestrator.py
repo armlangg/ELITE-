@@ -11,6 +11,31 @@ log = logging.getLogger(__name__)
 
 # Nombre max de vidéos YouTube à analyser (Gemini)
 MAX_VIDEO_SOURCES = 10
+
+# Signaux de niveau professionnel
+PRO_SIGNALS = [
+    "espn", "showtime", "dazn", "top rank", "matchroom", "hbo",
+    "sky sports", "bt sport", "fight pass", "ppv",
+    "ibf", "wbc", "wba", "wbo", "wbo", "wbss",
+    "world champion", "champion du monde", "world title",
+    "heavyweight", "lightweight", "middleweight", "welterweight",
+    "IBF", "WBC", "WBA", "WBO", "title fight", "world boxing",
+]
+
+
+def _detect_boxer_level(sources: list) -> str:
+    """Détecte automatiquement si le boxeur est pro ou amateur selon les sources."""
+    pro_score = 0
+    for s in sources[:15]:
+        text = (s.title + " " + s.description + " " + s.url).lower()
+        for signal in PRO_SIGNALS:
+            if signal.lower() in text:
+                pro_score += 1
+        # Chaînes pro connues
+        if s.weight >= 0.9:
+            pro_score += 2
+    return "pro" if pro_score >= 3 else "amateur"
+
 # Types de sources que Gemini peut visionner directement via URL
 GEMINI_SUPPORTED_PLATFORMS = ["youtube"]
 
@@ -43,6 +68,10 @@ class Orchestrator:
         # 1. Recherche
         sources = self.search.search_boxer(boxer_name, max_results=30)
         log.info("orchestrator.sources_found count=%d", len(sources))
+
+        # Détection automatique du niveau (invisible pour l'utilisateur)
+        boxer_level = _detect_boxer_level(sources)
+        log.info("orchestrator.boxer_level level=%s", boxer_level)
 
         # Ajouter les URLs manuelles si fournies
         if extra_urls:
@@ -94,12 +123,23 @@ class Orchestrator:
 
         # 4. Synthèse Claude — fusionner toutes les analyses + game plan
         combined_analysis = self._combine_analyses(boxer_name, analyses)
+        from config import Config
+        if boxer_level == "pro":
+            prices = dict(price_minor=Config.PRICE_PRO_MINOR, price_medium=Config.PRICE_PRO_MEDIUM,
+                         price_major=Config.PRICE_PRO_MAJOR, price_exceptional=Config.PRICE_PRO_EXCEPTIONAL)
+        else:
+            prices = dict(price_minor=Config.PRICE_AMATEUR_MINOR, price_medium=Config.PRICE_AMATEUR_MEDIUM,
+                         price_major=Config.PRICE_AMATEUR_MAJOR, price_exceptional=Config.PRICE_AMATEUR_EXCEPTIONAL)
+
         game_plan = self.claude.generate_game_plan(
-            boxer_name, combined_analysis, nb_analyses=len(analyses)
+            boxer_name, combined_analysis,
+            nb_analyses=len(analyses),
+            **prices,
         )
 
         return {
             "opponent": boxer_name,
+            "boxer_level": boxer_level,
             "sources_found": len(sources),
             "sources_analyzed": len(analyses),
             "sources": [s.to_dict() for s in sources[:10]],  # top 10 pour le dashboard
