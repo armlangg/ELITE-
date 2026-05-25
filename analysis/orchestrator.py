@@ -10,7 +10,7 @@ from .claude_client import ClaudeClient
 log = logging.getLogger(__name__)
 
 # Nombre max de vidéos YouTube à analyser (Gemini)
-MAX_VIDEO_SOURCES = 5
+MAX_VIDEO_SOURCES = 10
 # Types de sources que Gemini peut visionner directement via URL
 GEMINI_SUPPORTED_PLATFORMS = ["youtube"]
 
@@ -74,7 +74,12 @@ class Orchestrator:
         for i, source in enumerate(video_sources):
             try:
                 log.info("orchestrator.gemini url=%s [%d/%d]", source.url, i+1, len(video_sources))
-                result = self.gemini.analyze_video(source.url, boxer_name)
+                result = self.gemini.analyze_video(
+                        source.url, boxer_name,
+                        mode="auto",
+                        title=source.title,
+                        description=source.description,
+                    )
                 analyses.append({
                     "source": source.to_dict(),
                     "analysis": result["analysis"],
@@ -89,7 +94,9 @@ class Orchestrator:
 
         # 4. Synthèse Claude — fusionner toutes les analyses + game plan
         combined_analysis = self._combine_analyses(boxer_name, analyses)
-        game_plan = self.claude.generate_game_plan(boxer_name, combined_analysis)
+        game_plan = self.claude.generate_game_plan(
+            boxer_name, combined_analysis, nb_analyses=len(analyses)
+        )
 
         return {
             "opponent": boxer_name,
