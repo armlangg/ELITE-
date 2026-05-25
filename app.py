@@ -1,5 +1,6 @@
 """Serveur Flask ELITE — endpoints d'analyse asynchrone."""
 import logging
+import os
 import sys
 import uuid
 
@@ -111,6 +112,46 @@ def analyze_url():
     threading.Thread(target=run, daemon=True).start()
 
     return jsonify(job_id=job.id, status=job.status.value), 202
+
+
+@app.post("/webhook/stripe")
+def stripe_webhook():
+    """Webhook Stripe — confirme le paiement et déverrouille l'analyse."""
+    payload = request.get_data()
+    sig_header = request.headers.get("Stripe-Signature")
+    webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
+    if not webhook_secret:
+        log.warning("stripe.webhook.no_secret")
+        return jsonify(error="Webhook secret not configured"), 500
+
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+    except stripe.error.SignatureVerificationError:
+        log.warning("stripe.webhook.invalid_signature")
+        return jsonify(error="Invalid signature"), 400
+
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        job_id = session.get("metadata", {}).get("job_id")
+        if job_id:
+            job = store.get(job_id)
+            if job:
+                job.payload["paid"] = True
+                store.update(job)
+                log.info("stripe.payment.confirmed job_id=%s", job_id)
+
+    return jsonify(status="ok"), 200
+
+
+@app.get("/paid/<job_id>")
+def check_paid(job_id: str):
+    """Vérifie si une analyse a été payée."""
+    job = store.get(job_id)
+    if not job:
+        return jsonify(error="job not found"), 404
+    paid = job.payload.get("paid", False)
+    return jsonify(job_id=job_id, paid=paid), 200
 
 
 @app.post("/create-checkout")
